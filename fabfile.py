@@ -2,29 +2,42 @@ from fabric.api import *
 from fabtools import require
 import fabtools
 
+host = '165.227.28.54'
+
 @task(default=True)
 def deploy():
-    execute(system_dependencies)
+    #execute(system_dependencies)
     execute(setup_health)
     execute(start_serving)
 
 @task
-@hosts(['root@health2.7gf.org'])
+@hosts(['root@' + host])
 def system_dependencies():
+    # get some packages
+    require.deb.uptodate_index()
+
     # Require some Debian/Ubuntu packages
     require.deb.packages([
         'python3',
         'nginx-full',
         'python3-dev',
         'python3-pip',
+        'git',
         'python3-venv'
     ])
 
     # let's make a user for our app
     require.user('health')
 
+    # also install cloud monitoring
+    run("curl -sSL https://agent.digitalocean.com/install.sh | sh")
+
+    run("mkdir ~health/.ssh")
+    run("cp ~/.ssh/authorized_keys ~health/.ssh/authorized_keys")
+    run("chown -R health:health ~health/.ssh")
+
 @task
-@hosts(['health@health2.7gf.org'])
+@hosts(['health@' + host])
 def setup_health():
     # copy this up there
     require.git.working_copy('https://github.com/fusiongyro/health2', 'health')
@@ -37,7 +50,7 @@ def setup_health():
             run('python setup.py develop')
 
 @task
-@hosts(['root@health2.7gf.org'])
+@hosts(['root@' + host])
 def start_serving():
     # Require a PostgreSQL server
     # require.postgres.server()
@@ -45,10 +58,10 @@ def start_serving():
     # require.postgres.database('myappsdb', 'myuser')
 
     # Require a supervisor process for our app
-    #require.supervisor.process('health',
-    #                           command='/home/health/venv/bin/pserve /home/health/health/production.ini',
-    #                           directory='/home/health/health',
-    #                           user='health')
+    require.supervisor.process('health',
+                               command='/home/health/venv/bin/pserve /home/health/health/production.ini',
+                               directory='/home/health/health',
+                               user='health')
 
     # Require an nginx server proxying to our app
     require.nginx.proxied_site('health2.7gf.org',
